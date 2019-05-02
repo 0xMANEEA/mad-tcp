@@ -1,0 +1,193 @@
+#!/usr/bin/python
+
+from talween import out, err, progress_bar, write
+from random import randint
+from multiprocessing import Array, Value, Lock, Pool, Process, cpu_count
+from socket import create_connection, inet_aton, gethostbyname
+from time import sleep, time as epoch
+import threading
+import argparse
+import os
+
+# Arguments
+CONNECTIONS = 0
+PROCESSES   = 0
+THREADS     = 0
+TIMEOUT     = 0.0
+TARGET      = None
+OUTFILE     = None
+QUITE       = False
+VERBOSE     = False
+QUITE       = False
+SEQ         = False
+
+lock = Lock()
+plock = Lock()
+open_ports = Array('i', [-1]*(2**16))
+progress = Value('i', 0)
+
+def init_args():
+    global CONNECTIONS
+    global PROCESSES  
+    global THREADS    
+    global START_TIME 
+    global TIMEOUT    
+    global TARGET     
+    global OUTFILE    
+    global QUITE      
+    global VERBOSE    
+    global QUITE      
+    global SEQ        
+
+    parser = argparse.ArgumentParser(prog='mad-tcp', description='Scans TCP ports aggresively \033[1m\033[91m(USE WITH CAUTION!)\033(B\033[m')
+    parser.add_argument('ip', metavar='IP', help='The IP address to scan', type=str)
+    parser.add_argument('-q', help='Do not print the banner', action='store_true', default=False)
+    parser.add_argument('-s', help='Scan the ports sequentially', action='store_true', default=False) 
+    parser.add_argument('-v', help='Verbose output', action='store_true', default=False)
+    parser.add_argument('-o', metavar='File', help='Store the results in a file', type=str)
+    parser.add_argument('-c', metavar='Connections', help='Number of concurrent connections running', type=int, default=200)
+    parser.add_argument('-t', metavar='Timeout', help='Timeout period of an attempt', type=float, default=3.5)
+    arguments = vars(parser.parse_args())
+  
+    QUITE = arguments['q']
+    TARGET = arguments['ip']
+    CONNECTIONS = arguments['c']
+    TIMEOUT = arguments['t']
+    VERBOSE = arguments['v']
+    SEQ = arguments['s']
+    OUTFILE = open(arguments['o'], 'wb') if arguments['o'] is not None else None
+    PROCESSES = cpu_count()
+    THREADS = int(CONNECTIONS / PROCESSES)
+    if THREADS < 1:
+        THREADS = 1
+    try:
+        inet_aton(TARGET) # Is it a valid IP address?
+    except:
+        try:
+            TARGET = gethostbyname(TARGET) # Is it a host name?
+        except:
+            raise Exception(err('`B`H' + TARGET + '`R is not a valid IP address', ret=True, clear_line=True, sd='`', ed=''))
+
+def banner():
+    if QUITE:
+        return
+    banner ='\t                         _         _                  \n'
+    banner+='\t _ __ ___     __ _    __| |       | |_    ___   _ __  \n'
+    banner+='\t| \'_ ` _ \   / _` |  / _` |       | __|  / __| | \'_ \ \n'
+    banner+='\t| | | | | | | (_| | | (_| |       | |_  | (__  | |_) |\n'
+    banner+='\t|_| |_| |_|  \__,_|  \__,_|        \__|  \___| | .__/ \n'
+    banner+='\t                                               |_|    \n'
+    banner+='  -by Warsh.\n'
+    out('`B`I'+banner, sd='`', ed='', clear=True)
+    sleep(1)
+
+def settings_summary():
+    if QUITE:
+        return
+    out("`B`b\t[#]`R Target IP:       \t`B" + TARGET, sd='`', ed='')
+    sleep(0.1)
+    out("`B`b\t[#]`R ConnectionsL     \t`B" + str(CONNECTIONS) + " connections", sd='`', ed='')
+    sleep(0.1)
+    out("`B`b\t[#]`R Processes:       \t`B" + str(PROCESSES) + " processes", sd='`', ed='')
+    sleep(0.1)
+    out("`B`b\t[#]`R Threads/Process: \t`B" + str(THREADS) + " threads", sd='`', ed='')
+    sleep(0.1)
+    out("`B`b\t[#]`R Timeout Period:  \t`B" + str(TIMEOUT) + " seconds", sd='`', ed='')
+    sleep(0.1)
+    if SEQ:
+        out("`B`b\t[#]`R Scan Approach:\t`BSequential Scan", sd='`', ed='')
+    else:
+        out("`B`b\t[#]`R Scan Approach:\t`BRandom Scan", sd='`', ed='')
+    sleep(0.1)
+    if OUTFILE is not None:
+        out("`B`b\t[#]`R Save Result in\t`B" + OUTFILE.name, sd='`', ed='')
+
+def process(port_list):
+    os.nice(-39)
+    thrs = []
+    for i in range(len(port_list)):
+        thrs.append(threading.Thread(target=thread, args=(port_list[i],)))
+        thrs[i].start()
+
+    for thr in thrs:
+        thr.join()
+
+def thread(port):
+    global open_ports
+    global lock
+    global plock
+    global progress
+
+    try:
+        create_connection((TARGET, port), timeout=TIMEOUT) 
+    except:
+        port = -1
+
+    lock.acquire()
+    progress.value += 1
+    lock.release()
+
+    if port is not -1:
+        plock.acquire()
+        out('\t`B`g[+]`R Open port: `B' + str(port), sd='`', ed='', clear_line=True)
+        plock.release()
+
+def status(start_time):
+    global progress
+    global plock
+    write('\n')
+    while progress.value < 2**16 - 1:
+        sleep(1)
+        plock.acquire()
+        out('\t'+progress_bar(float(progress.value)/(2**16), ret=True, time=start_time, columns=54), clear_line=True, end='')
+        plock.release()
+
+def result_report():
+    pass
+
+def main():
+    ports = [] 
+    if not SEQ: # Randomize ports
+        temp = range(2**0, 2**16)
+        while len(temp) > 0:
+            ports.append(temp.pop(randint(0,len(temp)-1)))
+
+    else: # Do it sequentially
+        ports = range(2**0, 2**16)
+
+    procs_ports = []
+
+    ppp = THREADS # Ports Per Process
+    for i in range(2**16 / ppp):
+        procs_ports.append(ports[i*ppp: i*ppp + ppp])
+
+    if len(procs_ports) < 2**16 -1:
+        procs_ports.append(ports[len(procs_ports)*len(procs_ports[0]):])
+
+    # Stamp the current time as a reference point of estimation
+    start_time = epoch()
+
+    # Keep reporting the progress
+    status_thr = threading.Thread(target=status, args=(start_time,))
+    status_thr.start()
+
+    # Create (cpu_count) Processing
+    pool = Pool(PROCESSES)
+    pool.map(process, procs_ports)
+
+    # Wait for everyting to finish
+    pool.close()
+    pool.join()
+    status_thr.join()
+
+    out('\n`B`g\t[+]`R Done\n', sd='`', ed='', clear_line=True)
+
+if __name__ == "__main__":
+    init_args()
+    banner()
+    if os.getuid() is not 0:
+        err("This user looks weak for me :/\n`B`r[!]`R Maybe `Broot`R can handle me ;) ?\n\n", start="", sd='`', ed='')
+        exit(-1)
+    os.nice(-39)
+    settings_summary()
+    main()
