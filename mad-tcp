@@ -8,6 +8,7 @@ from time import sleep, time as epoch
 import threading
 import argparse
 import os
+import signal
 
 # Arguments
 CONNECTIONS = 0
@@ -182,6 +183,9 @@ def main():
 
     out('\n`B`g\t[+]`R Done\n', sd='`', ed='', clear_line=True)
 
+def sig_handle(sig, frame):
+    os.popen("killall mad-tcp >/dev/null 2>&1")
+
 if __name__ == "__main__":
     init_args()
     banner()
@@ -190,4 +194,5 @@ if __name__ == "__main__":
         exit(-1)
     os.nice(-39)
     settings_summary()
+    signal.signal(signal.SIGINT, sig_handle)
     main()
