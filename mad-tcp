@@ -46,7 +46,7 @@ def init_args():
     parser.add_argument('-s', help='Scan the ports sequentially', action='store_true', default=False) 
     parser.add_argument('-v', help='Verbose output', action='store_true', default=False)
     parser.add_argument('-o', metavar='File', help='Store the results in a file', type=str)
-    parser.add_argument('-c', metavar='Connections', help='Number of concurrent connections running', type=int, default=200)
+    parser.add_argument('-c', metavar='Connections', help='Number of concurrent connections running', type=int, default=cpu_count()*2**6)
     parser.add_argument('-t', metavar='Timeout', help='Timeout period of an attempt', type=float, default=3.5)
     arguments = vars(parser.parse_args())
   
@@ -91,7 +91,7 @@ def settings_summary():
         return
     out("`B`b\t[#]`R Target IP:       \t`B" + TARGET, sd='`', ed='')
     sleep(0.1)
-    out("`B`b\t[#]`R ConnectionsL     \t`B" + str(CONNECTIONS) + " connections", sd='`', ed='')
+    out("`B`b\t[#]`R Connections:     \t`B" + str(CONNECTIONS) + " connections", sd='`', ed='')
     sleep(0.1)
     out("`B`b\t[#]`R Processes:       \t`B" + str(PROCESSES) + " processes", sd='`', ed='')
     sleep(0.1)
