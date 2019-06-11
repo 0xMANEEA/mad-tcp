@@ -68,6 +68,10 @@ def init_args():
             TARGET = gethostbyname(TARGET) # Is it a host name?
         except:
             raise Exception(err('`B`H' + TARGET + '`R is not a valid IP address', ret=True, clear_line=True, sd='`', ed=''))
+    # TODO:
+    # * Supress open ports output with -qq
+    # * Add output file with -o
+    # * Add simple output option (comma seperated) with -C
 
 def banner():
     if QUITE:
@@ -76,9 +80,9 @@ def banner():
     banner+='\t _ __ ___     __ _    __| |       | |_    ___   _ __  \n'
     banner+='\t| \'_ ` _ \   / _` |  / _` |       | __|  / __| | \'_ \ \n'
     banner+='\t| | | | | | | (_| | | (_| |       | |_  | (__  | |_) |\n'
-    banner+='\t|_| |_| |_|  \__,_|  \__,_|        \__|  \___| | .__/ \n'
+    banner+='\t|_| |_| |_|  \__,_|  \__,_|       \___|  \___| | .__/ \n'
     banner+='\t                                               |_|    \n'
-    banner+='  -by Warsh.\n'
+    banner+='  -by Maneea.\n'
     out('`B`I'+banner, sd='`', ed='', clear=True)
     sleep(1)
 
@@ -132,6 +136,7 @@ def thread(port):
         plock.acquire()
         out('\t`B`g[+]`R Open port: `B' + str(port), sd='`', ed='', clear_line=True)
         plock.release()
+        open_ports[port] = 1
 
 def status(start_time):
     global progress
@@ -139,12 +144,25 @@ def status(start_time):
     write('\n')
     while progress.value < 2**16 - 1:
         sleep(1)
+        cols = int(os.popen("stty size | cut -d' ' -f2").read())  
         plock.acquire()
-        out('\t'+progress_bar(float(progress.value)/(2**16), ret=True, time=start_time, columns=54), clear_line=True, end='')
+        out('\t'+progress_bar(float(progress.value)/(2**16), ret=True, time=start_time, columns=cols), clear_line=True, end='')
         plock.release()
+    result_report()
 
 def result_report():
-    pass
+    global open_ports
+    global OUTFILE
+    global TARGET
+    numeric_open_ports = []
+    for i in range(0,len(open_ports)):
+        if open_ports[i] == 1:
+            numeric_open_ports.append(i)
+    plock.acquire()
+    out('\n\t`B`g[+]`R All Open Ports: `B' + ','.join(str(port) for port in numeric_open_ports) + '`R', sd='`', ed='', clear_line=True)
+    plock.release()
+    if OUTFILE is not None:
+        OUTFILE.write('open ports for ' + TARGET + ':\n' + ','.join(str(port) for port in numeric_open_ports) + '\n')
 
 def main():
     ports = [] 
@@ -184,6 +202,7 @@ def main():
     out('\n`B`g\t[+]`R Done\n', sd='`', ed='', clear_line=True)
 
 def sig_handle(sig, frame):
+    print ""
     os.popen("killall mad-tcp >/dev/null 2>&1")
 
 if __name__ == "__main__":
